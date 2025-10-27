@@ -8,6 +8,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from operator import itemgetter
 from faq_tool import get_faq_context
+from fastapi.middleware.cors import CORSMiddleware
+
 
 # Carrega variáveis de ambiente
 load_dotenv(dotenv_path=".env")
@@ -75,6 +77,14 @@ app = FastAPI(
     title="SaveIt FAQ AI API",
     description="API para responder perguntas sobre o SaveIt usando RAG (Retrieval-Augmented Generation) e Google Gemini.",
     version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # 5. Definição do Schema de Requisição
