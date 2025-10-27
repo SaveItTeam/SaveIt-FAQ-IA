@@ -1,21 +1,25 @@
 import os
 from dotenv import load_dotenv
+from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
 from langchain_core.output_parsers import StrOutputParser
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from operator import itemgetter
-from flask import Flask, request, jsonify
 from faq_tool import get_faq_context
 
+# Carrega variáveis de ambiente
 load_dotenv(dotenv_path=".env")
 
+# 1. Configuração do Modelo de Linguagem (LLM)
 llm_fast = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
     temperature=0,
     google_api_key=os.getenv("GEMINI_API_KEY")
 )
 
+# 2. Definição do Prompt do Sistema
 system_prompt_faq = ChatPromptTemplate.from_messages([
     ("system",
      """
@@ -29,7 +33,7 @@ Se a informação solicitada não constar no documento, diga: "Não tem essa inf
 - Se o trecho citar seção, mencione a parte relevante sem ser o número da seção.
 - Não invente informações.
 
-### ENTRADAb n
+### ENTRADA
 - ROUTE=faq
 - PERGUNTA_ORIGINAL=...
 - PERSONA=... (diretriz de concisão)
@@ -49,6 +53,7 @@ prompt_faq = ChatPromptTemplate.from_messages([
      )
 ])
 
+# 3. Cadeia RAG (Retrieval-Augmented Generation)
 faq_chain_core = (
     RunnablePassthrough.assign(
         question=itemgetter("input"),
@@ -59,40 +64,33 @@ faq_chain_core = (
     | StrOutputParser()
 )
 
-app = Flask(__name__)
-
 def answer_question(question, session_id="default"):
     return faq_chain_core.invoke(
         {"input": question},
         config={"configurable": {"session_id": session_id}}
     )
 
-@app.route("/faq", methods=["POST"])
-def faq_endpoint():
-    payload = request.get_json(force=True)
-    question = payload.get("question") or payload.get("input")
-    if not question:
-        return jsonify({"error": "Campo 'question' é obrigatório."}), 400
-    try:
-        resp = answer_question(question, session_id=payload.get("session_id", "WEB"))
-        return jsonify({"answer": resp})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+# 4. Inicialização do FastAPI
+app = FastAPI(
+    title="SaveIt FAQ AI API",
+    description="API para responder perguntas sobre o SaveIt usando RAG (Retrieval-Augmented Generation) e Google Gemini.",
+    version="1.0.0"
+)
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--serve", action="store_true", help="Rodar servidor HTTP")
-    args = parser.parse_args()
-    if args.serve:
-        app.run(host="0.0.0.0", port=5000)
-    else:
-        print("FAQ assistant (digite 'sair' para encerrar)"),
-        while True:
-            q = input("Pergunta: ").strip()
-            if q.lower() in ("sair", "exit", "quit"):
-                break
-            try:
-                print(answer_question(q))
-            except Exception as e:
-                print("Erro:", e)
+# 5. Definição do Schema de Requisição
+class QuestionRequest(BaseModel):
+    question: str
+    session_id: str = "WEB" # Opcional, mantido para compatibilidade
+
+# 6. Definição do Endpoint
+@app.post("/faq")
+async def faq_endpoint(request_data: QuestionRequest):
+    if not request_data.question:
+        raise HTTPException(status_code=400, detail="Campo 'question' é obrigatório.")
+    try:
+        # A função answer_question é síncrona, mas o FastAPI a gerencia em um thread pool
+        resp = answer_question(request_data.question, session_id=request_data.session_id)
+        return {"answer": resp}
+    except Exception as e:
+        # Em caso de erro (ex: chave da API inválida, problema no RAG), retorna 500
+        raise HTTPException(status_code=500, detail=f"Erro interno do servidor: {str(e)}")
