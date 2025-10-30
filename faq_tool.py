@@ -13,25 +13,22 @@ PDF_PATH = os.getenv("PDF_PATH")
 
 def clean_text(text):
     """Remove caracteres de formatação markdown e outros indesejados do texto."""
-    # Remove marcações de lista markdown (* item)
-    text = text.replace("\n* ", "\n")
-    text = text.replace(" * ", "\n")
+    import re
     
-    # Remove marcações de negrito markdown (**texto**)
-    while "**" in text:
-        text = text.replace("**", "")
+    # Remove marcações de negrito e itálico com asteriscos
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)  # Remove **texto**
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)      # Remove *texto*
     
-    # Remove asteriscos soltos
-    text = text.replace("***", "")
-    text = text.replace("* ", "")
-    text = text.replace(" *", "")
-    text = text.replace("*", "")
+    # Remove marcadores de lista com asterisco
+    text = re.sub(r'^\s*\*\s+', '', text, flags=re.MULTILINE)  # Remove * no início das linhas
+    text = re.sub(r'\n\s*\*\s+', '\n', text)  # Remove * depois de quebras de linha
     
-    # Remove múltiplos espaços e quebras de linha
-    while "  " in text:
-        text = text.replace("  ", " ")
-    while "\n\n\n" in text:
-        text = text.replace("\n\n\n", "\n\n")
+    # Remove quaisquer asteriscos restantes
+    text = text.replace('*', '')
+    
+    # Limpa espaços múltiplos e quebras de linha
+    text = re.sub(r'\s+', ' ', text)  # Substitui múltiplos espaços por um
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)  # Remove múltiplas quebras de linha
     
     return text.strip()
 
